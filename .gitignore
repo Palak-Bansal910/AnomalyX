@@ -1,0 +1,83 @@
+############################
+# GLOBAL OS / EDITOR STUFF
+############################
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+############################
+# PYTHON (backend + simulator)
+############################
+
+# Virtual environments
+venv/
+.env/
+.venv/
+
+# Python cache / build
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.log
+
+# Distribution / build
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+############################
+# NODE / NEXT.JS (dashboard)
+############################
+
+# Dependencies
+dashboard/node_modules/
+
+# Next.js build output
+dashboard/.next/
+dashboard/out/
+dashboard/.turbo/
+
+# Logs
+dashboard/npm-debug.log*
+dashboard/yarn-debug.log*
+dashboard/yarn-error.log*
+dashboard/pnpm-debug.log*
+
+# Env files (never commit secrets)
+dashboard/.env
+dashboard/.env.local
+dashboard/.env.development.local
+dashboard/.env.production.local
+dashboard/.env.test.local
+
+############################
+# GENERAL LOGS / TEMP
+############################
+
+*.log
+logs/
+tmp/
+.temp/
+.cache/
+
+############################
+# OTHER GENERATED / MISC
+############################
+
+# Mac/Linux trash
+.trash/
