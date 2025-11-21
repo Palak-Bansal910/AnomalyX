@@ -46,6 +46,7 @@ htmlcov/
 
 # Dependencies
 dashboard/node_modules/
+node_modules/
 
 # Next.js build output
 dashboard/.next/

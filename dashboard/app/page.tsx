@@ -3,6 +3,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 
+import dynamic from "next/dynamic";
+// dynamic import to ensure server-side rendering doesn't attempt to render three on server
+const OrbitVisualizer3D = dynamic(() => import("@/components/orbit-visualiser"), { ssr: false });
+
+export default function Page() {
+  return (
+    <div> 
+      <OrbitVisualizer3D />
+    </div>
+  );
+}
+
+
 /* ----- simple fetcher that reads NEXT_PUBLIC_API_BASE_URL ----- */
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 const fetcher = (path: string) => fetch(`${API_BASE}${path}`).then((r) => {
