@@ -1,173 +1,274 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { fetchJson } from "../lib/apiClient";
+import React, { useEffect, useMemo, useState } from "react";
+import useSWR from "swr";
 
-type Anomaly = {
-  id: string | number;
-  satellite: string;
-  severity: "low" | "medium" | "high" | "critical";
-  timestamp: string;
-  description: string;
-};
+/* ----- simple fetcher that reads NEXT_PUBLIC_API_BASE_URL ----- */
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+const fetcher = (path: string) => fetch(`${API_BASE}${path}`).then((r) => {
+  if (!r.ok) throw new Error(`API ${r.status} ${r.statusText}`);
+  return r.json();
+});
 
-export default function HomePage() {
-  const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+/* ---------- Inline small components so build won't fail ---------- */
 
-  useEffect(() => {
-    async function load() {
-      try {
-        setLoading(true);
-        setError(null);
-        // Update this path to match your FastAPI endpoint
-        const data = await fetchJson<Anomaly[]>("/anomalies");
-        setAnomalies(data);
-      } catch (err: any) {
-        setError(err.message || "Failed to load anomalies");
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, []);
-
+function Navbar({ isConnected, onConnectionToggle }: { isConnected: boolean; onConnectionToggle: () => void; }) {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col">
-      {/* Top navbar */}
-      <header className="border-b border-slate-800 bg-slate-900/70 backdrop-blur-sm">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-xl bg-emerald-500/90 flex items-center justify-center text-xs font-bold">
-              SA
-            </div>
-            <div>
-              <div className="font-semibold tracking-tight">
-                Satellite Anomaly Monitor
-              </div>
-              <div className="text-xs text-slate-400">
-                Real-time anomaly detection dashboard
-              </div>
-            </div>
+    <header className="border-b border-border bg-background/40 backdrop-blur-sm">
+      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-primary/80 to-accent/80 flex items-center justify-center text-xs font-bold">
+            SA
           </div>
-          <div className="flex items-center gap-3 text-xs text-slate-400">
-            <span className="hidden sm:inline">Status:</span>
-            <span className="px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-600/40">
-              Operational
-            </span>
+          <div>
+            <div className="font-semibold tracking-tight">Satellite Anomaly Monitor</div>
+            <div className="text-xs text-muted-foreground">Real-time anomaly detection</div>
           </div>
         </div>
-      </header>
 
-      {/* Main layout */}
-      <main className="flex-1">
-        <div className="max-w-6xl mx-auto px-4 py-6 grid gap-6 md:grid-cols-3">
-          {/* Left column: Summary + Filters */}
-          <div className="space-y-4 md:col-span-1">
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/60 shadow-lg shadow-slate-900/40 p-4">
-              <h2 className="text-sm font-semibold text-slate-200 mb-3">
-                Anomaly Overview
-              </h2>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-3">
-                  <div className="text-slate-400 mb-1">Total Anomalies</div>
-                  <div className="text-xl font-semibold">
-                    {anomalies.length}
-                  </div>
-                </div>
-                <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-3">
-                  <div className="text-slate-400 mb-1">Critical</div>
-                  <div className="text-xl font-semibold text-rose-400">
-                    {anomalies.filter((a) => a.severity === "critical").length}
-                  </div>
-                </div>
-              </div>
-            </section>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onConnectionToggle}
+            className={`px-3 py-1 rounded-lg text-xs font-medium border ${isConnected ? "bg-emerald-600/10 border-emerald-500/30" : "bg-rose-600/10 border-rose-500/30"}`}
+          >
+            {isConnected ? "Connected" : "Disconnected"}
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}
 
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/60 shadow-lg shadow-slate-900/40 p-4">
-              <h2 className="text-sm font-semibold text-slate-200 mb-3">
-                Filters
-              </h2>
-              <div className="space-y-2 text-xs text-slate-400">
-                <p className="text-slate-500">
-                  (You can later add satellite, orbit, and severity filters
-                  here.)
-                </p>
+function SatelliteFiltersPanel({ filters, satellites, onFilterChange, onRefresh }: any) {
+  return (
+    <div className="card p-4 animate-slide-in">
+      <h3 className="text-sm font-semibold mb-3">Filters</h3>
+      <div className="space-y-2 text-xs text-muted-foreground">
+        <label className="block">
+          Satellite
+          <select
+            value={filters.satelliteId}
+            onChange={(e) => onFilterChange({ ...filters, satelliteId: e.target.value })}
+            className="mt-1 w-full rounded border p-2 bg-background"
+          >
+            {Array.isArray(satellites) && satellites.length > 0 ? (
+              satellites.map((s: any) => <option key={s.satellite_id} value={s.satellite_id}>{s.satellite_id}</option>)
+            ) : (
+              <option value={filters.satelliteId}>{filters.satelliteId}</option>
+            )}
+          </select>
+        </label>
+        <div className="flex gap-2">
+          <input type="date" value={filters.fromDate} onChange={(e) => onFilterChange({ ...filters, fromDate: e.target.value })} className="rounded border p-2 w-full bg-background text-xs"/>
+          <input type="date" value={filters.toDate} onChange={(e) => onFilterChange({ ...filters, toDate: e.target.value })} className="rounded border p-2 w-full bg-background text-xs"/>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onRefresh} className="px-3 py-2 rounded bg-primary/20 border border-primary/30 text-xs">Refresh</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* placeholder - replace with real visualization later */
+function OrbitVisualizer() {
+  return (
+    <div className="card p-4 h-48 flex items-center justify-center animate-fade-in">
+      <div className="text-sm text-muted-foreground">Orbit visualizer placeholder (replace with WebGL/three.js)</div>
+    </div>
+  );
+}
+
+/* placeholder small chart */
+function AnomalyScoreChart({ data }: { data: any[] }) {
+  return (
+    <div className="card p-4 h-44 animate-fade-in">
+      <div className="text-sm text-muted-foreground">Score chart placeholder — {data?.length ?? 0} datapoints</div>
+    </div>
+  );
+}
+
+function ActiveAlertsList({ alerts }: { alerts: any[] }) {
+  return (
+    <div className="card p-4 animate-slide-in">
+      <h3 className="text-sm font-semibold mb-2">Active Alerts</h3>
+      <ul className="space-y-2 text-xs">
+        {(alerts || []).slice(0, 6).map((a: any) => (
+          <li key={a.id} className="flex items-center justify-between bg-background/30 p-2 rounded">
+            <div>
+              <div className="font-semibold">{a.satelliteId}</div>
+              <div className="text-muted-foreground text-xs">{a.issue}</div>
+            </div>
+            <div className="text-xs text-muted-foreground">{a.timestamp}</div>
+          </li>
+        ))}
+        {(!alerts || alerts.length === 0) && <li className="text-muted-foreground text-xs">No active alerts</li>}
+      </ul>
+    </div>
+  );
+}
+
+function AnomalyHistoryTable({ history }: { history: any[] }) {
+  const formatted = (history || []).slice(0, 15).map((h, i) => ({ ...h, key: `${h.satellite_id}-${i}` }));
+  return (
+    <div className="card p-4 animate-fade-in">
+      <h3 className="text-sm font-semibold mb-3">Recent Events</h3>
+      <div className="overflow-auto max-h-56 custom-scrollbar">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-muted-foreground text-left">
+              <th className="pb-2">Time</th>
+              <th className="pb-2">Satellite</th>
+              <th className="pb-2">Severity</th>
+              <th className="pb-2">Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {formatted.map((r: any, idx: number) => (
+              <tr key={r.key} className={`border-t border-border/20 ${idx % 2 === 0 ? "bg-background/5" : ""}`}>
+                <td className="py-2 font-mono">{new Date(r.timestamp).toISOString().split("T")[1]?.split(".")[0]}</td>
+                <td className="py-2">{r.satellite_id}</td>
+                <td className="py-2 font-bold">{String(r.severity).toUpperCase()}</td>
+                <td className="py-2">{(r.score ?? 0).toFixed ? (r.score).toFixed(2) : r.score}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function KPICard({ label, value, trend, icon }: { label: string; value: string | number; trend: string; icon: string; }) {
+  const trendColors = { up: "text-red-400", down: "text-green-400", stable: "text-blue-400" };
+  return (
+    <div className={`rounded-xl p-4 border border-border bg-card/40`} >
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className={trendColors[trend as keyof typeof trendColors]}>{icon}</div>
+      </div>
+      <div className="mt-3 text-2xl font-bold text-card-foreground">{value}</div>
+    </div>
+  );
+}
+
+/* ---------- actual page logic ---------- */
+
+type Anomaly = {
+  satellite_id: string;
+  timestamp: string;
+  severity: string;
+  score: number;
+  issues: string[];
+};
+
+export default function Home() {
+  const [isConnected, setIsConnected] = useState(true);
+  const [filters, setFilters] = useState({ satelliteId: "SAT-01", fromDate: "", toDate: "" });
+
+  const { data: anomaliesData, error: anomaliesError, mutate: refreshAnomalies } = useSWR<Anomaly[]>(
+    "/anomalies",
+    () => fetcher("/anomalies"),
+    { refreshInterval: 5000, revalidateOnFocus: true, errorRetryCount: 0 }
+  );
+
+  const { data: satellitesData, error: satellitesError, mutate: refreshSatellites } = useSWR<any[]>(
+    "/satellites",
+    () => fetcher("/satellites"),
+    { refreshInterval: 30000, errorRetryCount: 0 }
+  );
+
+  useEffect(() => {
+    setIsConnected(!(!!anomaliesError || !!satellitesError));
+  }, [anomaliesError, satellitesError]);
+
+  useEffect(() => {
+    if (Array.isArray(satellitesData) && satellitesData.length > 0 && !filters.satelliteId) {
+      setFilters((p) => ({ ...p, satelliteId: satellitesData[0].satellite_id }));
+    }
+  }, [satellitesData]);
+
+  // deterministic date-only filter strings to avoid SSR mismatch
+  const filtered = useMemo(() => {
+    const list = Array.isArray(anomaliesData) ? anomaliesData : [];
+    const from = filters.fromDate ? new Date(filters.fromDate).toISOString().split("T")[0] : null;
+    const to = filters.toDate ? new Date(filters.toDate).toISOString().split("T")[0] : null;
+    return list.filter((it) => {
+      const d = new Date(it.timestamp).toISOString().split("T")[0];
+      const matches = it.satellite_id === filters.satelliteId;
+      const after = !from || d >= from;
+      const before = !to || d <= to;
+      return matches && after && before;
+    });
+  }, [anomaliesData, filters]);
+
+  // build alerts
+  const alerts = useMemo(() => {
+    return (filtered || []).filter((f) => f.severity !== "normal").map((f, i) => ({
+      id: `${f.satellite_id}-${i}`,
+      satelliteId: f.satellite_id,
+      issue: (f.issues || []).slice(0, 2).join(", ") || "Anomaly",
+      severity: f.severity,
+      timestamp: new Date(f.timestamp).toISOString().replace("T", " ").slice(0, 16),
+    }));
+  }, [filtered]);
+
+  const kpis = {
+    totalToday: (filtered || []).filter((i) => new Date(i.timestamp).toISOString().split("T")[0] === new Date().toISOString().split("T")[0]).length,
+    critical: (filtered || []).filter((i) => i.severity === "critical").length,
+    avgScore: ((filtered || []).reduce((s, it) => s + (it.score || 0), 0) / Math.max(1, (filtered || []).length)).toFixed(2),
+    online: (satellitesData || []).filter((s: any) => s.is_online).length || 0,
+  };
+
+  const handleRefresh = () => { refreshAnomalies(); refreshSatellites(); };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Navbar isConnected={isConnected} onConnectionToggle={() => setIsConnected((v) => !v)} />
+
+      {!isConnected && (
+        <div className="bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-amber-500/20 border-b px-6 py-4 animate-slide-in shadow-lg">
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="text-2xl animate-pulse">⚠️</div>
+              <div>
+                <div className="font-semibold text-amber-200">Backend Connection Unavailable</div>
+                <div className="text-xs text-muted-foreground">{(anomaliesError || satellitesError)?.message || `Try starting backend at ${API_BASE}`}</div>
               </div>
-            </section>
+            </div>
+            <div>
+              <button onClick={handleRefresh} className="px-3 py-2 rounded bg-primary/20 border border-primary/30 text-xs">Retry</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <main className="p-6 max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* Left column */}
+          <div className="space-y-4">
+            <SatelliteFiltersPanel filters={filters} satellites={satellitesData} onFilterChange={setFilters} onRefresh={handleRefresh} />
+            <div className="card p-4 animate-fade-in">
+              <h4 className="text-sm font-semibold mb-3">Live KPIs</h4>
+              <div className="grid grid-cols-2 gap-3">
+                <KPICard label="Total Today" value={kpis.totalToday} trend="up" icon="📊" />
+                <KPICard label="Critical" value={kpis.critical} trend="up" icon="🚨" />
+                <KPICard label="Avg Score" value={kpis.avgScore} trend="down" icon="📈" />
+                <KPICard label="Online" value={kpis.online} trend="stable" icon="🛰️" />
+              </div>
+            </div>
           </div>
 
-          {/* Right column: Anomaly list */}
-          <div className="md:col-span-2">
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/60 shadow-lg shadow-slate-900/40 p-4 h-full flex flex-col">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-slate-200">
-                  Active Anomalies
-                </h2>
-                <span className="text-xs text-slate-500">
-                  Live feed from backend API
-                </span>
-              </div>
+          {/* center */}
+          <div className="space-y-4">
+            <OrbitVisualizer />
+            <AnomalyScoreChart data={filtered} />
+          </div>
 
-              {loading && (
-                <div className="flex-1 flex items-center justify-center text-xs text-slate-400">
-                  Loading anomalies from backend…
-                </div>
-              )}
-
-              {error && !loading && (
-                <div className="flex-1 flex items-center justify-center">
-                  <div className="text-xs text-rose-300 bg-rose-950/40 border border-rose-800/60 px-3 py-2 rounded-xl">
-                    Failed to load data: {error}
-                  </div>
-                </div>
-              )}
-
-              {!loading && !error && anomalies.length === 0 && (
-                <div className="flex-1 flex items-center justify-center text-xs text-slate-500">
-                  No anomalies reported yet.
-                </div>
-              )}
-
-              {!loading && !error && anomalies.length > 0 && (
-                <div className="flex-1 overflow-auto mt-2">
-                  <ul className="space-y-2">
-                    {anomalies.map((a) => (
-                      <li
-                        key={a.id}
-                        className="rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 flex items-start justify-between gap-3 text-xs"
-                      >
-                        <div className="space-y-1">
-                          <div className="font-medium text-slate-100">
-                            {a.satellite}
-                          </div>
-                          <div className="text-slate-400 text-[11px]">
-                            {a.description}
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            {new Date(a.timestamp).toLocaleString()}
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          <span
-                            className={`px-2 py-1 rounded-full border text-[10px] font-medium ${
-                              a.severity === "critical"
-                                ? "bg-rose-500/10 border-rose-500/60 text-rose-300"
-                                : a.severity === "high"
-                                ? "bg-amber-500/10 border-amber-500/60 text-amber-300"
-                                : "bg-emerald-500/10 border-emerald-500/60 text-emerald-300"
-                            }`}
-                          >
-                            {a.severity.toUpperCase()}
-                          </span>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </section>
+          {/* right */}
+          <div className="space-y-4">
+            <ActiveAlertsList alerts={alerts} />
+            <AnomalyHistoryTable history={filtered} />
           </div>
         </div>
       </main>
