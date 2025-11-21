@@ -1,39 +1,49 @@
-
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
 
-class Telemetry(BaseModel):
+class TelemetrySchema(BaseModel):
     satellite_id: str
-    temperature: float | None = None
-    rssi: float | None = None
-    snr: float | None = None
-    packet_loss: float | None = None
-    position_x: float | None = None
-    position_y: float | None = None
-    position_z: float | None = None
-    velocity_x: float | None = None
-    velocity_y: float | None = None
-    velocity_z: float | None = None
-    battery_voltage: float | None = None
-    solar_panel_current: float | None = None
-    timestamp: datetime
+    temperature: Optional[float] = None
+    rssi: Optional[float] = None
+    snr: Optional[float] = None
+    packet_loss: Optional[float] = None
+    position_x: Optional[float] = None
+    position_y: Optional[float] = None
+    position_z: Optional[float] = None
+    velocity_x: Optional[float] = None
+    velocity_y: Optional[float] = None
+    velocity_z: Optional[float] = None
+    battery_voltage: Optional[float] = None
+    solar_panel_current: Optional[float] = None
+    timestamp: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 class AnomalyCreate(BaseModel):
     satellite_id: str
-    metric: str
-    value: float
-    severity: Optional[str] = "low"
+    severity: str
+    issue: str
+    score: float
+    timestamp: Optional[datetime] = None
 
-
-class Anomaly(BaseModel):
+class AnomalyResponse(BaseModel):
     id: int
     satellite_id: str
-    metric: str
-    value: float
     severity: str
+    issue: str
+    score: float
     timestamp: datetime
 
+    class Config:
+        from_attributes = True
 
-class Config:
-    orm_mode = True
+class SatelliteResponse(BaseModel):
+    satellite_id: str
+    is_online: bool
+    latest_severity: str
+    last_telemetry: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
